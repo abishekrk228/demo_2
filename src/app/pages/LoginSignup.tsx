@@ -110,7 +110,36 @@ export function LoginSignup() {
         setSuccess('Password reset link sent! Please check your email.');
       }
     } catch (err: any) {
-      setError(err.message || 'An error occurred during authentication.');
+      console.error('Auth error caught:', err);
+      let errMsg = '';
+      if (err) {
+        if (typeof err === 'string') {
+          errMsg = err;
+        } else {
+          // Check standard and nested error properties
+          const possibleMessage = err.message || err.error_description || err.error || err.msg || err.description || err.statusText;
+          if (possibleMessage && typeof possibleMessage === 'string') {
+            errMsg = possibleMessage;
+          } else if (possibleMessage && typeof possibleMessage === 'object') {
+            try {
+              errMsg = JSON.stringify(possibleMessage);
+            } catch (e) {}
+          }
+          
+          if (!errMsg || errMsg === '{}') {
+            try {
+              errMsg = JSON.stringify(err);
+            } catch (e) {
+              errMsg = String(err);
+            }
+          }
+        }
+      }
+      
+      if (!errMsg || errMsg === '{}') {
+        errMsg = 'Failed to connect to Supabase. This is likely a network timeout or connection error. Please check your browser console (F12) for details.';
+      }
+      setError(errMsg);
     } finally {
       setLoading(false);
     }
