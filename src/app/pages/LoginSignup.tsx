@@ -295,9 +295,7 @@ export function LoginSignup() {
         }}
       >
         <Link to="/" className="flex items-center gap-3 z-20">
-          <div className="w-8 h-8 rounded flex items-center justify-center" style={{ background: 'var(--meridian-gold)' }}>
-            <span className="text-xs font-bold" style={{ color: 'var(--abyss-ink)', fontFamily: 'var(--font-mono)' }}>T</span>
-          </div>
+          <img src="/tapeitout-logo.png" alt="TapeItOut Logo" className="w-8 h-8 rounded object-contain" />
           <div className="flex flex-col leading-none">
             <span className="text-white text-sm font-semibold">Ask</span>
             <span className="text-xs" style={{ color: 'var(--meridian-gold)', letterSpacing: '0.12em' }}>TAPEITOUT</span>

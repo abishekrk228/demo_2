@@ -46,12 +46,11 @@ export function Navigation() {
         <div className="flex items-center justify-between h-16">
           {/* Logo */}
           <Link to="/" className="flex items-center gap-3 group">
-            <div
-              className="w-8 h-8 rounded flex items-center justify-center"
-              style={{ background: 'var(--meridian-gold)' }}
-            >
-              <span className="text-xs font-bold" style={{ color: 'var(--abyss-ink)', fontFamily: 'var(--font-mono)' }}>T</span>
-            </div>
+            <img
+              src="/tapeitout-logo.png"
+              alt="TapeItOut Logo"
+              className="w-8 h-8 rounded object-contain"
+            />
             <div className="flex flex-col leading-none">
               <span className="text-white text-sm font-semibold tracking-wide">Ask</span>
               <span className="text-xs font-medium" style={{ color: 'var(--meridian-gold)', letterSpacing: '0.12em' }}>TAPEITOUT</span>

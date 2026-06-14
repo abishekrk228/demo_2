@@ -130,9 +130,7 @@ export function DocsHub() {
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded flex items-center justify-center" style={{ background: 'var(--abyss-ink)' }}>
-                  <span style={{ fontSize: '0.6rem', fontWeight: 700, color: 'var(--meridian-gold)', fontFamily: 'var(--font-mono)' }}>T</span>
-                </div>
+                <img src="/tapeitout-logo.png" alt="TapeItOut Logo" className="w-7 h-7 rounded object-contain" />
                 <span className="font-semibold" style={{ color: 'var(--abyss-ink)' }}>TapeItOut Docs</span>
               </div>
               <div className="w-px h-4" style={{ background: 'var(--stone-ridge)' }} />
