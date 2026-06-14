@@ -16,7 +16,6 @@ const navLinks = [
 
 export function Navigation() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
@@ -78,19 +77,7 @@ export function Navigation() {
 
           {/* Right Actions */}
           <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSearchOpen(!searchOpen)}
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded text-sm transition-colors"
-              style={{
-                background: 'rgba(255,255,255,0.06)',
-                color: 'rgba(243,242,237,0.6)',
-                border: '1px solid rgba(255,255,255,0.1)',
-              }}
-            >
-              <Search className="w-3.5 h-3.5" />
-              <span>Search</span>
-              <kbd className="ml-2 px-1.5 py-0.5 text-xs rounded" style={{ background: 'rgba(255,255,255,0.1)', fontFamily: 'var(--font-mono)' }}>⌘K</kbd>
-            </button>
+
 
             {isAuthenticated && user ? (
               <div className="flex items-center gap-4">
@@ -170,26 +157,7 @@ export function Navigation() {
           </div>
         </div>
 
-        {/* Search Dropdown */}
-        {searchOpen && (
-          <div className="border-t py-3" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'rgba(243,242,237,0.4)' }} />
-              <input
-                autoFocus
-                type="text"
-                placeholder="Search errors, questions, documentation..."
-                className="w-full pl-10 pr-4 py-2.5 rounded text-sm outline-none"
-                style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  color: 'var(--canvas-bone)',
-                  fontFamily: 'var(--font-ui)',
-                }}
-              />
-            </div>
-          </div>
-        )}
+
 
         {/* Mobile Menu */}
         {menuOpen && (
