@@ -319,7 +319,7 @@ export function Layout() {
   return (
     <div className={`min-h-screen flex flex-col relative ${isLoginPage ? 'h-screen overflow-hidden' : ''}`} style={{ fontFamily: 'var(--font-ui)' }}>
       <BrandedBackground />
-      <ScrollTrack />
+      {!isAtlasWorkspace && <ScrollTrack />}
       {/* 1. INITIAL PRELOADER OVERLAY */}
       {isPreloading && (
         <div 

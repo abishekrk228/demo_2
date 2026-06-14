@@ -15,15 +15,15 @@ const footerLinks = {
     { label: 'Failure Atlas', href: '/errors' },
   ],
   Company: [
-    { label: 'About TapeItOut', href: '#' },
+    { label: 'About TapeItOut', href: '/' },
     { label: 'Pricing', href: '/pricing' },
-    { label: 'Blog', href: '#' },
-    { label: 'Careers', href: '#' },
+    { label: 'Blog', href: '/community' },
+    { label: 'Careers', href: '/' },
   ],
   Legal: [
-    { label: 'Privacy Policy', href: '#' },
-    { label: 'Terms of Service', href: '#' },
-    { label: 'Cookie Policy', href: '#' },
+    { label: 'Privacy Policy', href: '/' },
+    { label: 'Terms of Service', href: '/' },
+    { label: 'Cookie Policy', href: '/' },
   ],
 };
 
@@ -45,11 +45,15 @@ export function Footer() {
               Atlas maps the unknown. We help semiconductor engineers navigate RTL-to-GDSII with confidence.
             </p>
             <div className="flex items-center gap-3">
-              {[Github, Twitter, MessageSquare].map((Icon, i) => (
-                <a key={i} href="#" className="w-8 h-8 rounded flex items-center justify-center transition-colors" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(243,242,237,0.5)' }}>
-                  <Icon className="w-4 h-4" />
-                </a>
-              ))}
+              <a href="https://github.com/Jazua6969/Ask_tapeitout" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded flex items-center justify-center transition-colors hover:opacity-80" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(243,242,237,0.5)' }}>
+                <Github className="w-4 h-4" />
+              </a>
+              <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded flex items-center justify-center transition-colors hover:opacity-80" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(243,242,237,0.5)' }}>
+                <Twitter className="w-4 h-4" />
+              </a>
+              <a href="https://discord.com" target="_blank" rel="noopener noreferrer" className="w-8 h-8 rounded flex items-center justify-center transition-colors hover:opacity-80" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(243,242,237,0.5)' }}>
+                <MessageSquare className="w-4 h-4" />
+              </a>
             </div>
           </div>
 
