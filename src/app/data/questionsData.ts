@@ -1,12 +1,24 @@
 import { supabase } from '../lib/supabaseClient';
 
+export interface Comment {
+  id?: string | number;
+  userId?: string;
+  author: string;
+  time: string;
+  body: string;
+}
+
 export interface Answer {
+  id?: string | number;
+  userId?: string;
   author: string;
   time: string;
   body: string;
   votes: number;
+  hasVoted?: boolean;
   isSolution?: boolean;
   isVerified?: boolean; // Fork & Verify simulation status
+  comments?: Comment[];
 }
 
 export interface AtlasAnalysis {
@@ -43,6 +55,7 @@ export interface Question {
 
   views: number;
   votes: number;
+  hasVoted?: boolean;
   answers: Answer[];
   author: string;
   userId?: string; // UUID of the user who created this question (for remote questions)
@@ -405,12 +418,35 @@ interface RemoteQuestionPayload {
   verilog?: string;
 }
 
+interface RemoteCommentRow {
+  id: string | number;
+  user_id: string;
+  user_name: string;
+  body: string;
+  created_at: string;
+}
+
+interface RemoteAnswerRow {
+  id: string | number;
+  user_id: string;
+  user_name: string;
+  body: string;
+  votes: number;
+  is_solution: boolean;
+  is_verified: boolean;
+  created_at: string;
+  answer_votes?: { user_id: string }[];
+  comments?: RemoteCommentRow[];
+}
+
 interface RemoteQuestionRow {
   id: string;
   user_id: string | null;
   user_name: string | null;
   question: string;
   created_at: string;
+  answers?: RemoteAnswerRow[];
+  question_votes?: { user_id: string }[];
 }
 
 function normalizeId(id: string | number): string {
@@ -460,10 +496,43 @@ function parseRemoteQuestion(rawQuestion: string): RemoteQuestionPayload {
   };
 }
 
-function mapRemoteRowToQuestion(row: RemoteQuestionRow): Question {
+function mapRemoteRowToComment(row: RemoteCommentRow): Comment {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    author: row.user_name || 'Anonymous Engineer',
+    time: new Date(row.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+    body: row.body
+  };
+}
+
+function mapRemoteRowToAnswer(row: RemoteAnswerRow, currentUserId?: string): Answer {
+  const answerVotes = row.answer_votes || [];
+  const votes = answerVotes.length;
+  const hasVoted = currentUserId ? answerVotes.some(v => v.user_id === currentUserId) : false;
+  const comments = row.comments ? row.comments.map(mapRemoteRowToComment) : [];
+  return {
+    id: row.id,
+    userId: row.user_id,
+    author: row.user_name || 'Anonymous Engineer',
+    time: new Date(row.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+    body: row.body,
+    votes: votes,
+    hasVoted,
+    isSolution: row.is_solution,
+    isVerified: row.is_verified,
+    comments
+  };
+}
+
+function mapRemoteRowToQuestion(row: RemoteQuestionRow, currentUserId?: string): Question {
   const parsed = parseRemoteQuestion(row.question);
   const body = parsed.body?.trim() || '';
   const title = parsed.title?.trim() || inferTitleFromBody(body);
+  const answers = row.answers ? row.answers.map(ans => mapRemoteRowToAnswer(ans, currentUserId)) : [];
+  const questionVotes = row.question_votes || [];
+  const votes = questionVotes.length;
+  const hasVoted = currentUserId ? questionVotes.some(v => v.user_id === currentUserId) : false;
 
   return {
     id: buildRemoteQuestionId(row.id),
@@ -475,13 +544,14 @@ function mapRemoteRowToQuestion(row: RemoteQuestionRow): Question {
     toolVersion: parsed.toolVersion || 'Generic',
     node: parsed.node || 'Sky130',
     views: 1,
-    votes: 0,
-    answers: [],
+    votes: votes,
+    hasVoted,
+    answers,
     author: row.user_name || 'Anonymous Engineer',
     userId: row.user_id || undefined,
     rep: 100,
     date: new Date(row.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
-    solved: false,
+    solved: answers.some(a => a.isSolution) || false,
     severity: parsed.severity || 'Medium',
     verilog: parsed.verilog,
   };
@@ -516,13 +586,22 @@ function mergeQuestions(localQuestions: Question[], remoteQuestions: Question[])
 export function getQuestions(): Question[] {
   try {
     const data = localStorage.getItem(LOCAL_STORAGE_KEY);
+    console.log('getQuestions raw data from localStorage:', data);
     if (data) {
       const parsed = JSON.parse(data);
-      // Self-healing database check: if Question 5 is missing or verilog is missing, force reseed.
-      if (!parsed.some((q: any) => q.id === 5 && q.verilog) || !parsed.some((q: any) => q.id === 1 && q.verilog)) {
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
-        setQuestions(seedQuestions);
-        return seedQuestions;
+      console.log('getQuestions parsed data:', parsed);
+      // Clean up any old synthetic/seed questions (IDs 1 to 5) from the cache, matching both string and number types
+      const filtered = parsed.filter((q: any) => {
+        const idStr = String(q.id);
+        const isMatch = idStr !== '1' && idStr !== '2' && idStr !== '3' && idStr !== '4' && idStr !== '5';
+        console.log(`Checking question id: "${idStr}". Should keep? ${isMatch}. Title: "${q.title}"`);
+        return isMatch;
+      });
+      console.log('getQuestions filtered list:', filtered);
+      if (filtered.length !== parsed.length) {
+        console.log('getQuestions: saving filtered list to localStorage because lengths differ');
+        setQuestions(filtered);
+        return filtered;
       }
       return parsed;
     }
@@ -530,9 +609,10 @@ export function getQuestions(): Question[] {
     console.error('Failed to read from localStorage:', e);
   }
 
-  // Set default if empty
-  setQuestions(seedQuestions);
-  return seedQuestions;
+  // Set default if empty to empty array
+  console.log('getQuestions: localStorage empty, returning []');
+  setQuestions([]);
+  return [];
 }
 
 export function setQuestions(questions: Question[]): void {
@@ -662,11 +742,36 @@ export function addQuestion(
   return newQ;
 }
 
-export async function fetchQuestions(): Promise<Question[]> {
+export async function fetchQuestions(currentUserId?: string): Promise<Question[]> {
   const localQuestions = getQuestions();
   const { data, error } = await supabase
     .from('questions')
-    .select('id, user_id, user_name, question, created_at')
+    .select(`
+      id,
+      user_id,
+      user_name,
+      question,
+      created_at,
+      answers (
+        id,
+        user_id,
+        user_name,
+        body,
+        votes,
+        is_solution,
+        is_verified,
+        created_at,
+        answer_votes (user_id),
+        comments (
+          id,
+          user_id,
+          user_name,
+          body,
+          created_at
+        )
+      ),
+      question_votes (user_id)
+    `)
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -674,13 +779,22 @@ export async function fetchQuestions(): Promise<Question[]> {
     return localQuestions;
   }
 
-  const remoteQuestions = (data || []).map(mapRemoteRowToQuestion);
-  const merged = mergeQuestions(localQuestions, remoteQuestions);
+  const remoteQuestions = (data || []).map(row => mapRemoteRowToQuestion(row as RemoteQuestionRow, currentUserId));
+
+  // Filter out any remote questions from localQuestions that are no longer in remoteQuestions (meaning they were deleted)
+  const cleanedLocalQuestions = localQuestions.filter(localQ => {
+    if (isRemoteQuestionId(localQ.id)) {
+      return remoteQuestions.some(remoteQ => normalizeId(remoteQ.id) === normalizeId(localQ.id));
+    }
+    return true;
+  });
+
+  const merged = mergeQuestions(cleanedLocalQuestions, remoteQuestions);
   setQuestions(merged);
   return merged;
 }
 
-export async function fetchQuestionById(id: string | number): Promise<Question | undefined> {
+export async function fetchQuestionById(id: string | number, currentUserId?: string): Promise<Question | undefined> {
   const localMatch = getQuestionById(id);
   if (localMatch) {
     return localMatch;
@@ -692,7 +806,32 @@ export async function fetchQuestionById(id: string | number): Promise<Question |
 
   const { data, error } = await supabase
     .from('questions')
-    .select('id, user_id, user_name, question, created_at')
+    .select(`
+      id,
+      user_id,
+      user_name,
+      question,
+      created_at,
+      answers (
+        id,
+        user_id,
+        user_name,
+        body,
+        votes,
+        is_solution,
+        is_verified,
+        created_at,
+        answer_votes (user_id),
+        comments (
+          id,
+          user_id,
+          user_name,
+          body,
+          created_at
+        )
+      ),
+      question_votes (user_id)
+    `)
     .eq('id', getRemoteQuestionId(id))
     .single();
 
@@ -701,7 +840,7 @@ export async function fetchQuestionById(id: string | number): Promise<Question |
     return undefined;
   }
 
-  const mapped = mapRemoteRowToQuestion(data as RemoteQuestionRow);
+  const mapped = mapRemoteRowToQuestion(data as RemoteQuestionRow, currentUserId);
   const merged = mergeQuestions(getQuestions(), [mapped]);
   setQuestions(merged);
   return mapped;
@@ -785,6 +924,23 @@ export function deleteLocalQuestion(id: string | number): Question[] {
   return updated;
 }
 
+export function deleteLocalAnswer(questionId: string | number, answerIndex: number): Question[] {
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(questionId)) {
+      const updatedAnswers = q.answers.filter((_, idx) => idx !== answerIndex);
+      return {
+        ...q,
+        answers: updatedAnswers,
+        solved: updatedAnswers.some(a => a.isSolution)
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+  return updated;
+}
+
 export async function deleteRemoteQuestion(
   id: string | number,
   currentUserId?: string
@@ -815,4 +971,409 @@ export async function deleteRemoteQuestion(
 
   // Also remove from local cache
   deleteLocalQuestion(id);
+}
+
+export async function createRemoteAnswer(params: {
+  questionId: string | number;
+  userId: string;
+  userName: string;
+  body: string;
+  isSolution?: boolean;
+}): Promise<Answer> {
+  const remoteQuestionId = coerceRemoteQuestionId(getRemoteQuestionId(params.questionId));
+  
+  const { data, error } = await supabase
+    .from('answers')
+    .insert({
+      question_id: remoteQuestionId,
+      user_id: params.userId,
+      user_name: params.userName,
+      body: params.body,
+      is_solution: params.isSolution || false
+    })
+    .select('id, user_id, user_name, body, votes, is_solution, is_verified, created_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  const mapped = mapRemoteRowToAnswer(data as RemoteAnswerRow);
+  
+  // Update local cache
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(params.questionId)) {
+      return {
+        ...q,
+        answers: [...q.answers, mapped],
+        solved: mapped.isSolution ? true : q.solved
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+
+  return mapped;
+}
+
+export async function deleteRemoteAnswer(
+  answerId: string | number,
+  questionId: string | number,
+  currentUserId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('answers')
+    .delete()
+    .eq('id', answerId)
+    .eq('user_id', currentUserId);
+
+  if (error) {
+    throw error;
+  }
+
+  // Update local cache
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(questionId)) {
+      const updatedAnswers = q.answers.filter(a => String(a.id) !== String(answerId));
+      return {
+        ...q,
+        answers: updatedAnswers,
+        solved: updatedAnswers.some(a => a.isSolution)
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+}
+
+export async function toggleQuestionVote(
+  questionId: string | number,
+  userId: string
+): Promise<{ votes: number; hasVoted: boolean }> {
+  if (!isRemoteQuestionId(questionId)) {
+    // Local question voting
+    const list = getQuestions();
+    let votes = 0;
+    let hasVoted = false;
+    const updated = list.map(q => {
+      if (normalizeId(q.id) === normalizeId(questionId)) {
+        hasVoted = !q.hasVoted;
+        votes = q.votes + (hasVoted ? 1 : -1);
+        return {
+          ...q,
+          votes,
+          hasVoted
+        };
+      }
+      return q;
+    });
+    setQuestions(updated);
+    return { votes, hasVoted };
+  }
+
+  const remoteId = coerceRemoteQuestionId(getRemoteQuestionId(questionId));
+
+  // Check if vote already exists
+  const { data: existing, error: checkError } = await supabase
+    .from('question_votes')
+    .select('id')
+    .eq('question_id', remoteId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (checkError) throw checkError;
+
+  if (existing) {
+    // Remove vote
+    const { error: deleteError } = await supabase
+      .from('question_votes')
+      .delete()
+      .eq('id', existing.id);
+    if (deleteError) throw deleteError;
+  } else {
+    // Cast vote
+    const { error: insertError } = await supabase
+      .from('question_votes')
+      .insert({
+        question_id: remoteId,
+        user_id: userId
+      });
+    if (insertError) throw insertError;
+  }
+
+  // Fetch updated votes count
+  const { data: updatedVotes, error: countError } = await supabase
+    .from('question_votes')
+    .select('user_id')
+    .eq('question_id', remoteId);
+
+  if (countError) throw countError;
+
+  const votes = updatedVotes.length;
+  const hasVoted = updatedVotes.some(v => v.user_id === userId);
+
+  // Update local cache
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(questionId)) {
+      return {
+        ...q,
+        votes,
+        hasVoted
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+
+  return { votes, hasVoted };
+}
+
+export async function toggleAnswerVote(
+  answerId: string | number,
+  questionId: string | number,
+  userId: string
+): Promise<{ votes: number; hasVoted: boolean }> {
+  if (!isRemoteQuestionId(questionId)) {
+    // Local answer voting
+    const list = getQuestions();
+    let votes = 0;
+    let hasVoted = false;
+    const updated = list.map(q => {
+      if (normalizeId(q.id) === normalizeId(questionId)) {
+        const updatedAnswers = q.answers.map(ans => {
+          if (String(ans.id) === String(answerId) || (ans.id === undefined && String(ans.author) === String(answerId))) {
+            hasVoted = !ans.hasVoted;
+            votes = ans.votes + (hasVoted ? 1 : -1);
+            return {
+              ...ans,
+              votes,
+              hasVoted
+            };
+          }
+          return ans;
+        });
+        return {
+          ...q,
+          answers: updatedAnswers
+        };
+      }
+      return q;
+    });
+    setQuestions(updated);
+    return { votes, hasVoted };
+  }
+
+  // Remote answer voting
+  // Check if vote already exists
+  const { data: existing, error: checkError } = await supabase
+    .from('answer_votes')
+    .select('id')
+    .eq('answer_id', answerId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (checkError) throw checkError;
+
+  if (existing) {
+    // Remove vote
+    const { error: deleteError } = await supabase
+      .from('answer_votes')
+      .delete()
+      .eq('id', existing.id);
+    if (deleteError) throw deleteError;
+  } else {
+    // Cast vote
+    const { error: insertError } = await supabase
+      .from('answer_votes')
+      .insert({
+        answer_id: answerId,
+        user_id: userId
+      });
+    if (insertError) throw insertError;
+  }
+
+  // Fetch updated votes count
+  const { data: updatedVotes, error: countError } = await supabase
+    .from('answer_votes')
+    .select('user_id')
+    .eq('answer_id', answerId);
+
+  if (countError) throw countError;
+
+  const votes = updatedVotes.length;
+  const hasVoted = updatedVotes.some(v => v.user_id === userId);
+
+  // Update local cache
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(questionId)) {
+      const updatedAnswers = q.answers.map(ans => {
+        if (String(ans.id) === String(answerId)) {
+          return {
+            ...ans,
+            votes,
+            hasVoted
+          };
+        }
+        return ans;
+      });
+      return {
+        ...q,
+        answers: updatedAnswers
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+
+  return { votes, hasVoted };
+}
+
+export async function createRemoteComment(params: {
+  answerId: string | number;
+  questionId: string | number;
+  userId: string;
+  userName: string;
+  body: string;
+}): Promise<Comment> {
+  const { data, error } = await supabase
+    .from('comments')
+    .insert({
+      answer_id: params.answerId,
+      user_id: params.userId,
+      user_name: params.userName,
+      body: params.body
+    })
+    .select('id, user_id, user_name, body, created_at')
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  const mapped = mapRemoteRowToComment(data as RemoteCommentRow);
+
+  // Update local cache
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(params.questionId)) {
+      const updatedAnswers = q.answers.map(ans => {
+        if (String(ans.id) === String(params.answerId)) {
+          return {
+            ...ans,
+            comments: [...(ans.comments || []), mapped]
+          };
+        }
+        return ans;
+      });
+      return {
+        ...q,
+        answers: updatedAnswers
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+
+  return mapped;
+}
+
+export async function deleteRemoteComment(
+  commentId: string | number,
+  answerId: string | number,
+  questionId: string | number,
+  currentUserId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('comments')
+    .delete()
+    .eq('id', commentId)
+    .eq('user_id', currentUserId);
+
+  if (error) {
+    throw error;
+  }
+
+  // Update local cache
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(questionId)) {
+      const updatedAnswers = q.answers.map(ans => {
+        if (String(ans.id) === String(answerId)) {
+          const updatedComments = (ans.comments || []).filter(c => String(c.id) !== String(commentId));
+          return {
+            ...ans,
+            comments: updatedComments
+          };
+        }
+        return ans;
+      });
+      return {
+        ...q,
+        answers: updatedAnswers
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+}
+
+export function addLocalComment(
+  questionId: string | number,
+  answerIndex: number,
+  comment: Comment
+): Question[] {
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(questionId)) {
+      const updatedAnswers = q.answers.map((ans, idx) => {
+        if (idx === answerIndex) {
+          return {
+            ...ans,
+            comments: [...(ans.comments || []), comment]
+          };
+        }
+        return ans;
+      });
+      return {
+        ...q,
+        answers: updatedAnswers
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+  return updated;
+}
+
+export function deleteLocalComment(
+  questionId: string | number,
+  answerIndex: number,
+  commentIndex: number
+): Question[] {
+  const list = getQuestions();
+  const updated = list.map(q => {
+    if (normalizeId(q.id) === normalizeId(questionId)) {
+      const updatedAnswers = q.answers.map((ans, idx) => {
+        if (idx === answerIndex) {
+          const updatedComments = (ans.comments || []).filter((_, cIdx) => cIdx !== commentIndex);
+          return {
+            ...ans,
+            comments: updatedComments
+          };
+        }
+        return ans;
+      });
+      return {
+        ...q,
+        answers: updatedAnswers
+      };
+    }
+    return q;
+  });
+  setQuestions(updated);
+  return updated;
 }

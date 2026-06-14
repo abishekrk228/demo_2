@@ -2,12 +2,14 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router';
 import { User as UserIcon, Mail, Calendar, CheckCircle2, ChevronRight, ThumbsUp, MessageSquare, Award } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { getQuestions, Question } from '../data/questionsData';
+import { fetchQuestions, Question } from '../data/questionsData';
 
 export function Profile() {
   const { user, isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'upvoted' | 'answered' | 'questions'>('upvoted');
+  const [questionsList, setQuestionsList] = useState<Question[]>([]);
+  const [isLoadingQuestions, setIsLoadingQuestions] = useState(true);
 
   useEffect(() => {
     // Redirect to login if not authenticated once loading finishes
@@ -15,6 +17,22 @@ export function Profile() {
       navigate('/login');
     }
   }, [loading, isAuthenticated, navigate]);
+
+  useEffect(() => {
+    const loadQuestionsList = async () => {
+      if (!user) return;
+      try {
+        setIsLoadingQuestions(true);
+        const data = await fetchQuestions(user.id);
+        setQuestionsList(data);
+      } catch (error) {
+        console.error('Failed to load profile questions:', error);
+      } finally {
+        setIsLoadingQuestions(false);
+      }
+    };
+    loadQuestionsList();
+  }, [user]);
 
   if (loading || !user) {
     return (
@@ -43,11 +61,12 @@ export function Profile() {
     .toUpperCase()
     .slice(0, 2);
 
-  // Filter seed questions to simulate mock user activity
-  const questionsList = getQuestions();
-  const upvotedQuestions = questionsList.slice(0, 3);
-  const answeredQuestions = questionsList.filter(q => q.solved).slice(0, 2);
-  const userQuestions = questionsList.slice(4, 5);
+  // Filter questions dynamically based on actual user interactions
+  const upvotedQuestions = questionsList.filter(q => q.hasVoted);
+  const answeredQuestions = questionsList.filter(
+    q => q.solved && (q.userId === user.id || q.answers.some(ans => ans.userId === user.id && ans.isSolution))
+  );
+  const userQuestions = questionsList.filter(q => q.userId === user.id);
 
 
   return (
@@ -167,14 +186,23 @@ export function Profile() {
 
         {/* Tab Contents */}
         <div className="space-y-4">
-          {activeTab === 'upvoted' && (
-            <QuestionList questions={upvotedQuestions} emptyMessage="No upvoted questions yet." />
-          )}
-          {activeTab === 'answered' && (
-            <QuestionList questions={answeredQuestions} emptyMessage="No solved problems yet." />
-          )}
-          {activeTab === 'questions' && (
-            <QuestionList questions={userQuestions} emptyMessage="You haven't asked any questions yet." />
+          {isLoadingQuestions ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <div className="w-8 h-8 border-4 border-[#D4AF37] border-t-transparent rounded-full animate-spin mb-4" />
+              <span className="text-white/40 font-mono text-xs">Loading lists...</span>
+            </div>
+          ) : (
+            <>
+              {activeTab === 'upvoted' && (
+                <QuestionList questions={upvotedQuestions} emptyMessage="No upvoted questions yet." />
+              )}
+              {activeTab === 'answered' && (
+                <QuestionList questions={answeredQuestions} emptyMessage="No solved problems yet." />
+              )}
+              {activeTab === 'questions' && (
+                <QuestionList questions={userQuestions} emptyMessage="You haven't asked any questions yet." />
+              )}
+            </>
           )}
         </div>
 

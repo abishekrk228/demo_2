@@ -38,8 +38,18 @@ import {
   verifyAnswerInQuestion,
   deleteRemoteQuestion,
   deleteLocalQuestion,
+  createRemoteAnswer,
+  deleteRemoteAnswer,
+  deleteLocalAnswer,
+  toggleQuestionVote,
+  toggleAnswerVote,
+  createRemoteComment,
+  deleteRemoteComment,
+  addLocalComment,
+  deleteLocalComment,
   Question, 
-  Answer 
+  Answer,
+  Comment
 } from '../data/questionsData';
 
 export function QuestionDetail() {
@@ -60,6 +70,18 @@ export function QuestionDetail() {
   const [newAnswerText, setNewAnswerText] = useState('');
   const [newAuthor, setNewAuthor] = useState('Guest Engineer');
   const [isSolutionInput, setIsSolutionInput] = useState(false);
+  const [isSubmittingAnswer, setIsSubmittingAnswer] = useState(false);
+
+  // Reply state
+  const [replyingTarget, setReplyingTarget] = useState<{ answerId?: string | number; index: number } | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [isSubmittingReply, setIsSubmittingReply] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      setNewAuthor(user.user_metadata?.full_name || user.email?.split('@')[0] || 'Guest Engineer');
+    }
+  }, [user]);
 
   // Fork & Verify Sandbox State
   const [isSandboxEditing, setIsSandboxEditing] = useState(false);
@@ -92,7 +114,7 @@ export function QuestionDetail() {
         return;
       }
 
-      const fetchedQuestion = await fetchQuestionById(questionId);
+      const fetchedQuestion = await fetchQuestionById(questionId, user?.id);
       if (fetchedQuestion) {
         setQuestion(fetchedQuestion);
         setSandboxCode(fetchedQuestion.verilog || '');
@@ -103,7 +125,7 @@ export function QuestionDetail() {
     };
 
     loadQuestion();
-  }, [questionId]);
+  }, [questionId, user?.id]);
 
   useEffect(() => {
     if (isSynthesizing) {
@@ -141,35 +163,220 @@ export function QuestionDetail() {
     );
   }
 
-  const handleUpvoteQuestion = () => {
-    const updated = updateQuestionVotes(question.id, 1);
-    const updatedQ = updated.find(q => q.id === question.id);
-    if (updatedQ) {
-      setQuestion(updatedQ);
+  const handleUpvoteQuestion = async () => {
+    if (String(question.id).startsWith('supabase:')) {
+      if (!user) {
+        alert('You must be logged in to upvote.');
+        return;
+      }
+      try {
+        await toggleQuestionVote(question.id, user.id);
+        const updatedQ = await fetchQuestionById(question.id, user.id);
+        if (updatedQ) {
+          setQuestion(updatedQ);
+        }
+      } catch (err) {
+        console.error('Failed to toggle upvote:', err);
+      }
+    } else {
+      const updated = updateQuestionVotes(question.id, 1);
+      const updatedQ = updated.find(q => q.id === question.id);
+      if (updatedQ) {
+        setQuestion(updatedQ);
+      }
     }
   };
 
-  const handlePostAnswer = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newAnswerText.trim()) return;
+  const handleHelpfulAnswer = async (answerId?: string | number, index?: number) => {
+    if (String(question.id).startsWith('supabase:')) {
+      if (!user) {
+        alert('You must be logged in to mark an answer as helpful.');
+        return;
+      }
+      if (!answerId) return;
+      try {
+        await toggleAnswerVote(answerId, question.id, user.id);
+        const updatedQ = await fetchQuestionById(question.id, user.id);
+        if (updatedQ) {
+          setQuestion(updatedQ);
+        }
+      } catch (err) {
+        console.error('Failed to toggle helpful vote:', err);
+      }
+    } else {
+      if (index === undefined) return;
+      const list = getQuestions();
+      const updated = list.map(q => {
+        if (normalizeId(q.id) === normalizeId(question.id)) {
+          const updatedAnswers = q.answers.map((ans, idx) => {
+            if (idx === index) {
+              return { ...ans, votes: ans.votes + 1 };
+            }
+            return ans;
+          });
+          return { ...q, answers: updatedAnswers };
+        }
+        return q;
+      });
+      setQuestions(updated);
+      
+      const updatedQ = getQuestionById(question.id);
+      if (updatedQ) {
+        setQuestion(updatedQ);
+      }
+    }
+  };
 
-    const newAns: Answer = {
-      author: newAuthor.trim() || 'Anonymous Engineer',
-      time: 'Just now',
-      body: newAnswerText.trim(),
-      votes: 0,
-      isSolution: isSolutionInput,
-      isVerified: false
-    };
+  const handleStartReply = (answerId: string | number | undefined, index: number) => {
+    if (String(question.id).startsWith('supabase:') && !user) {
+      alert('You must be logged in to reply.');
+      return;
+    }
+    setReplyingTarget({ answerId, index });
+    setReplyText('');
+  };
 
-    const updated = addAnswerToQuestion(question.id, newAns);
-    const updatedQ = updated.find(q => q.id === question.id);
-    if (updatedQ) {
-      setQuestion(updatedQ);
+  const handlePostReply = async (answerId?: string | number, index?: number) => {
+    if (!replyText.trim() || isSubmittingReply) return;
+
+    try {
+      setIsSubmittingReply(true);
+      if (String(question.id).startsWith('supabase:')) {
+        if (!answerId || !user) return;
+        
+        const nickname = user.user_metadata?.full_name || user.email?.split('@')[0] || 'Anonymous Engineer';
+        await createRemoteComment({
+          answerId,
+          questionId: question.id,
+          userId: user.id,
+          userName: nickname,
+          body: replyText.trim()
+        });
+      } else {
+        if (index === undefined) return;
+        const newComment: Comment = {
+          author: 'Anonymous Engineer',
+          time: 'Just now',
+          body: replyText.trim()
+        };
+        addLocalComment(question.id, index, newComment);
+      }
+
+      // Refresh question details
+      const updatedQ = getQuestionById(question.id);
+      if (updatedQ) {
+        setQuestion(updatedQ);
+      }
+      setReplyingTarget(null);
+      setReplyText('');
+    } catch (error) {
+      console.error('Failed to post reply:', error);
+      alert('Failed to post reply.');
+    } finally {
+      setIsSubmittingReply(false);
+    }
+  };
+
+  const handleDeleteReply = async (
+    commentId?: string | number,
+    answerId?: string | number,
+    answerIndex?: number,
+    commentIndex?: number
+  ) => {
+    if (!window.confirm('Are you sure you want to delete this reply?')) {
+      return;
     }
 
-    setNewAnswerText('');
-    setIsSolutionInput(false);
+    try {
+      if (String(question.id).startsWith('supabase:')) {
+        if (!commentId || !answerId || !user) return;
+        await deleteRemoteComment(commentId, answerId, question.id, user.id);
+      } else {
+        if (answerIndex === undefined || commentIndex === undefined) return;
+        deleteLocalComment(question.id, answerIndex, commentIndex);
+      }
+
+      // Refresh question
+      const updatedQ = getQuestionById(question.id);
+      if (updatedQ) {
+        setQuestion(updatedQ);
+      }
+    } catch (error) {
+      console.error('Failed to delete reply:', error);
+      alert('Failed to delete reply.');
+    }
+  };
+
+  const handlePostAnswer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAnswerText.trim() || isSubmittingAnswer) return;
+
+    try {
+      if (String(question.id).startsWith('supabase:')) {
+        if (!user) {
+          alert('You must be logged in to answer a remote question.');
+          return;
+        }
+        setIsSubmittingAnswer(true);
+        await createRemoteAnswer({
+          questionId: question.id,
+          userId: user.id,
+          userName: newAuthor.trim() || 'Anonymous Engineer',
+          body: newAnswerText.trim(),
+          isSolution: isSolutionInput
+        });
+      } else {
+        const newAns: Answer = {
+          author: newAuthor.trim() || 'Anonymous Engineer',
+          time: 'Just now',
+          body: newAnswerText.trim(),
+          votes: 0,
+          isSolution: isSolutionInput,
+          isVerified: false
+        };
+        addAnswerToQuestion(question.id, newAns);
+      }
+
+      // Reload question from local state/cache to update state
+      const updatedQ = getQuestionById(question.id);
+      if (updatedQ) {
+        setQuestion(updatedQ);
+      }
+
+      setNewAnswerText('');
+      setIsSolutionInput(false);
+    } catch (error) {
+      console.error('Failed to post answer:', error);
+      alert('Failed to post answer. Please try again.');
+    } finally {
+      setIsSubmittingAnswer(false);
+    }
+  };
+
+  const handleDeleteAnswer = async (answerId?: string | number, index?: number) => {
+    if (!window.confirm('Are you sure you want to delete this answer? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      if (String(question.id).startsWith('supabase:')) {
+        if (!answerId || !user) return;
+        await deleteRemoteAnswer(answerId, question.id, user.id);
+      } else {
+        if (index === undefined) return;
+        deleteLocalAnswer(question.id, index);
+      }
+
+      // Reload question from cache
+      const updatedQ = getQuestionById(question.id);
+      if (updatedQ) {
+        setQuestion(updatedQ);
+      }
+    } catch (error) {
+      console.error('Failed to delete answer:', error);
+      const message = error instanceof Error ? error.message : 'Failed to delete answer.';
+      alert(message);
+    }
   };
 
   const handleDeleteQuestion = async () => {
@@ -340,10 +547,14 @@ export function QuestionDetail() {
                 
                 <button 
                   onClick={handleUpvoteQuestion} 
-                  className="flex items-center gap-1 hover:text-amber-500 transition-colors ml-auto bg-white border px-2 py-1 rounded text-[11px] font-semibold cursor-pointer shadow-xs"
-                  style={{ borderColor: 'var(--stone-ridge)', color: '#475569' }}
+                  className={`flex items-center gap-1 transition-colors ml-auto border px-2 py-1 rounded text-[11px] font-semibold cursor-pointer shadow-xs ${
+                    question.hasVoted 
+                      ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600 hover:border-amber-600' 
+                      : 'bg-white border-gray-300 hover:text-amber-500 text-[#475569]'
+                  }`}
+                  style={question.hasVoted ? undefined : { borderColor: 'var(--stone-ridge)' }}
                 >
-                  <ThumbsUp className="w-3.5 h-3.5 text-amber-500" /> Upvote ({question.votes})
+                  <ThumbsUp className={`w-3.5 h-3.5 ${question.hasVoted ? 'text-white' : 'text-amber-500'}`} /> Upvote ({question.votes})
                 </button>
 
                 {/* Delete Button - Only show for question author */}
@@ -902,11 +1113,91 @@ export function QuestionDetail() {
                                 {ans.body}
                               </p>
                               
-                              <div className="flex items-center gap-2 text-xs pt-1">
-                                <button className="flex items-center gap-1.5 text-gray-400 hover:text-amber-500 transition-colors cursor-pointer">
-                                  <ThumbsUp className="w-3.5 h-3.5" /> Helpful ({ans.votes})
-                                </button>
+                              <div className="flex items-center justify-between text-xs pt-1">
+                                <div className="flex items-center gap-2">
+                                  <button 
+                                    onClick={() => handleHelpfulAnswer(ans.id, i)}
+                                    className={`flex items-center gap-1.5 transition-colors cursor-pointer px-2 py-0.5 rounded border ${
+                                      ans.hasVoted 
+                                        ? 'bg-amber-500 border-amber-500 text-white hover:bg-amber-600 hover:border-amber-600' 
+                                        : 'bg-white border-gray-200 text-gray-400 hover:text-amber-500'
+                                    }`}
+                                  >
+                                    <ThumbsUp className={`w-3.5 h-3.5 ${ans.hasVoted ? 'text-white' : 'text-amber-500'}`} /> Helpful ({ans.votes})
+                                  </button>
+
+                                  <button 
+                                    onClick={() => handleStartReply(ans.id, i)}
+                                    className="flex items-center gap-1.5 transition-colors cursor-pointer px-2 py-0.5 rounded border bg-white border-gray-200 text-gray-400 hover:text-amber-500 hover:border-amber-500"
+                                  >
+                                    <MessageSquare className="w-3.5 h-3.5 text-amber-500" /> Reply
+                                  </button>
+                                </div>
+
+                                {(!String(question.id).startsWith('supabase:') || (user && ans.userId === user.id)) && (
+                                  <button 
+                                    onClick={() => handleDeleteAnswer(ans.id, i)}
+                                    className="flex items-center gap-1 text-gray-400 hover:text-red-500 transition-colors cursor-pointer"
+                                    title="Delete this answer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-red-500" /> Delete
+                                  </button>
+                                )}
                               </div>
+
+                              {/* Nested Comments/Replies */}
+                              {ans.comments && ans.comments.length > 0 && (
+                                <div className="ml-4 mt-3 space-y-2 border-l-2 border-gray-100 pl-4">
+                                  {ans.comments.map((comment, cIdx) => (
+                                    <div key={cIdx} className="text-xs space-y-1 relative group/comment">
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-semibold text-gray-700">{comment.author}</span>
+                                        <span className="text-gray-400">{comment.time}</span>
+                                        
+                                        {/* Delete comment button */}
+                                        {(!String(question.id).startsWith('supabase:') || (user && comment.userId === user.id)) && (
+                                          <button
+                                            onClick={() => handleDeleteReply(comment.id, ans.id, i, cIdx)}
+                                            className="opacity-0 group-hover/comment:opacity-100 transition-opacity ml-auto text-red-500 hover:text-red-700 cursor-pointer"
+                                            title="Delete reply"
+                                          >
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        )}
+                                      </div>
+                                      <p className="text-gray-600 leading-relaxed font-ui whitespace-pre-wrap">{comment.body}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* Reply Input Box */}
+                              {replyingTarget && replyingTarget.index === i && (
+                                <div className="ml-4 mt-3 space-y-2 pl-4 border-l-2 border-amber-500/30">
+                                  <textarea
+                                    rows={2}
+                                    placeholder="Add a reply..."
+                                    value={replyText}
+                                    onChange={e => setReplyText(e.target.value)}
+                                    className="w-full p-2 border border-gray-200 rounded text-xs outline-none focus:ring-1 focus:ring-amber-500 bg-gray-50/50 font-ui"
+                                  />
+                                  <div className="flex justify-end gap-2 text-[11px]">
+                                    <button 
+                                      onClick={() => setReplyingTarget(null)}
+                                      className="px-2 py-1 text-gray-500 hover:text-gray-750 font-semibold cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button 
+                                      onClick={() => handlePostReply(ans.id, i)}
+                                      disabled={!replyText.trim() || isSubmittingReply}
+                                      className="px-3 py-1 bg-slate-900 text-white font-semibold rounded cursor-pointer disabled:opacity-50"
+                                    >
+                                      {isSubmittingReply ? 'Posting...' : 'Post Reply'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -968,10 +1259,11 @@ export function QuestionDetail() {
                     <div className="flex justify-end pt-1">
                       <button
                         type="submit"
-                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold text-white transition-all hover:scale-102 cursor-pointer shadow-sm"
+                        disabled={isSubmittingAnswer}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold text-white transition-all hover:scale-102 cursor-pointer shadow-sm disabled:opacity-50"
                         style={{ background: 'var(--abyss-ink)' }}
                       >
-                        <Send className="w-3.5 h-3.5" /> Post Answer
+                        <Send className="w-3.5 h-3.5" /> {isSubmittingAnswer ? 'Posting...' : 'Post Answer'}
                       </button>
                     </div>
                   </form>

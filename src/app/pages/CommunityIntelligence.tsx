@@ -28,6 +28,7 @@ import {
   updateQuestionVotes, 
   createRemoteQuestion, 
   deleteQuestion,
+  toggleQuestionVote,
   Question 
 } from '../data/questionsData';
 import { useAuth } from '../context/AuthContext';
@@ -143,7 +144,7 @@ export function CommunityIntelligence() {
       try {
         setIsLoadingQuestions(true);
         setQuestionError(null);
-        const loadedQuestions = await fetchQuestions();
+        const loadedQuestions = await fetchQuestions(user?.id);
         setQuestions(loadedQuestions);
       } catch (error) {
         console.error('Failed to load questions:', error);
@@ -154,7 +155,7 @@ export function CommunityIntelligence() {
     };
 
     loadQuestions();
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     if (user) {
@@ -162,11 +163,26 @@ export function CommunityIntelligence() {
     }
   }, [user]);
 
-  const handleUpvote = (id: string | number, e: React.MouseEvent) => {
+  const handleUpvote = async (id: string | number, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    const updated = updateQuestionVotes(id, 1);
-    setQuestions(updated);
+    
+    if (String(id).startsWith('supabase:')) {
+      if (!user) {
+        alert('You must be logged in to upvote.');
+        return;
+      }
+      try {
+        await toggleQuestionVote(id, user.id);
+        const loadedQuestions = await fetchQuestions(user.id);
+        setQuestions(loadedQuestions);
+      } catch (err) {
+        console.error('Failed to toggle upvote:', err);
+      }
+    } else {
+      const updated = updateQuestionVotes(id, 1);
+      setQuestions(updated);
+    }
   };
 
   const handleSanitizeCode = () => {
@@ -226,7 +242,7 @@ export function CommunityIntelligence() {
         verilogCode: sanitizedCode || undefined,
       });
 
-      const refreshedQuestions = await fetchQuestions();
+      const refreshedQuestions = await fetchQuestions(user.id);
       setQuestions(refreshedQuestions);
     
       // Reset form & close modal
@@ -446,7 +462,9 @@ export function CommunityIntelligence() {
                         {/* Stats Block (Left Side) */}
                         <div className="flex flex-col items-end gap-2 w-20 shrink-0 text-right">
                           {/* Votes */}
-                          <div className="flex items-center gap-1 text-xs font-medium text-gray-700">
+                          <div className={`flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded transition-all ${
+                            q.hasVoted ? 'text-amber-600 bg-amber-50' : 'text-gray-700'
+                          }`}>
                             <span className="font-semibold text-sm">{q.votes}</span>
                             <span className="text-[11px] text-gray-400">votes</span>
                           </div>
@@ -520,10 +538,14 @@ export function CommunityIntelligence() {
                               {/* Quick Upvote Icon */}
                               <button 
                                 onClick={(e) => handleUpvote(q.id, e)}
-                                className="ml-1 p-1 hover:text-amber-500 rounded hover:bg-gray-150 transition-colors cursor-pointer"
-                                title="Upvote question"
+                                className={`ml-1 p-1 rounded transition-colors cursor-pointer ${
+                                  q.hasVoted 
+                                    ? 'text-amber-500 bg-amber-50' 
+                                    : 'text-gray-400 hover:text-amber-500 hover:bg-gray-150'
+                                }`}
+                                title={q.hasVoted ? "Remove upvote" : "Upvote question"}
                               >
-                                <ThumbsUp className="w-3.5 h-3.5 text-gray-400 hover:text-amber-500" />
+                                <ThumbsUp className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </div>

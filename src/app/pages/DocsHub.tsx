@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { Search, ChevronRight, ExternalLink, BookOpen, FileText, Code } from 'lucide-react';
 
-const sections = {
-  'Getting Started': ['Introduction to TapeItOut', 'Setting up OpenROAD', 'Your First Design Flow', 'Atlas Quickstart'],
-  'OpenROAD Flow': ['RTL Synthesis with Yosys', 'Floorplanning', 'Placement with RePlAce', 'CTS with TritonCTS', 'Routing with FastRoute', 'Signoff with OpenSTA'],
-  'Sky130 PDK': ['Sky130 Overview', 'Standard Cells', 'IO Pads', 'SRAM Macros', 'Design Rules'],
-  'GF180MCU PDK': ['GF180 Overview', 'Process Layers', 'Device Types', 'Design Rules'],
-  'Timing Analysis': ['Understanding SDC', 'Setup Timing', 'Hold Timing', 'Clock Domain Crossing', 'Multi-Corner Analysis'],
-  'Atlas API': ['API Reference', 'Authentication', 'Endpoints', 'Webhooks', 'Rate Limits'],
-  'Error Reference': ['Error Code Index', 'CTS Errors', 'Timing Errors', 'Routing Errors', 'DRC/LVS Errors'],
+  const sections: Record<string, string[]> = {
+  'Getting Started': ['introduction-to-tapeitout', 'setting-up-openroad', 'openroad-cookbook', 'your-first-design-flow', 'atlas-quickstart'],
+  'OpenROAD Flow': ['rtl-synthesis-with-yosys', 'floorplanning', 'placement-with-replace', 'cts-with-tritoncts', 'routing-with-fastroute', 'signoff-with-opensta'],
+  'Sky130 PDK': ['sky130-overview', 'sky130-standard-cells', 'sky130-io-pads', 'sky130-sram-macros', 'sky130-design-rules'],
+  'GF180MCU PDK': ['gf180-overview', 'gf180-process-layers', 'gf180-device-types', 'gf180-design-rules'],
+  'Timing Analysis': ['understanding-sdc', 'setup-timing', 'hold-timing', 'clock-domain-crossing', 'multi-corner-analysis'],
+  'Atlas API': ['atlas-api-reference', 'atlas-api-authentication', 'atlas-api-endpoints', 'atlas-api-webhooks', 'atlas-api-rate-limits'],
+  'Error Reference': ['error-code-index', 'cts-errors', 'timing-errors', 'routing-errors', 'drc-lvs-errors'],
 };
 
 const currentDoc = {
@@ -105,18 +105,20 @@ export function DocsHub() {
               </button>
               {activeSection === section && (
                 <div className="ml-2 mt-1 mb-2 space-y-0.5">
-                  {pages.map(page => (
-                    <button
-                      key={page}
-                      className="w-full text-left text-xs px-3 py-1.5 rounded transition-colors"
+                  {pages.map(slug => (
+                    <Link
+                      key={slug}
+                      to={`/docs/${slug}`}
+                      className="w-full text-left text-xs px-3 py-1.5 rounded transition-colors block"
                       style={{
-                        color: page === currentDoc.title ? 'var(--abyss-ink)' : '#64748B',
-                        background: page === currentDoc.title ? '#FFFFFF' : 'transparent',
-                        fontWeight: page === currentDoc.title ? 500 : 400,
+                        color: slug === 'cts-with-tritoncts' ? 'var(--abyss-ink)' : '#64748B',
+                        background: slug === 'cts-with-tritoncts' ? '#FFFFFF' : 'transparent',
+                        fontWeight: slug === 'cts-with-tritoncts' ? 500 : 400,
                       }}
                     >
-                      {page}
-                    </button>
+                      {/* Display title by replacing dashes with spaces and capitalizing */}
+                      {slug.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                    </Link>
                   ))}
                 </div>
               )}

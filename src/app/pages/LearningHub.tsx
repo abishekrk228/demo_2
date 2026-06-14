@@ -1,63 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import { BookOpen, Clock, CheckCircle, ArrowRight, Play, Lock, Star } from 'lucide-react';
+import {
+  learningPaths,
+  getContinueModuleForPaths,
+  getNextUnfinishedModule,
+  getPathCompletedCount,
+  getPathProgress,
+  loadLearningProgress,
+} from '../data/learningPaths';
 
 const stages = [
-  { name: 'RTL Design', icon: '⟨/⟩', modules: 8, duration: '4h 20m', color: '#8B5CF6' },
-  { name: 'Synthesis', icon: '⚙', modules: 12, duration: '6h 15m', color: '#3B82F6' },
-  { name: 'Floorplanning', icon: '⬚', modules: 7, duration: '3h 45m', color: '#10B981' },
-  { name: 'Placement', icon: '⊞', modules: 10, duration: '5h 30m', color: '#F59E0B' },
-  { name: 'CTS', icon: '🌳', modules: 9, duration: '4h 50m', color: '#EC4899' },
-  { name: 'Routing', icon: '↗', modules: 14, duration: '7h 20m', color: '#EF4444' },
-  { name: 'Signoff', icon: '✓', modules: 11, duration: '6h 00m', color: '#06B6D4' },
-  { name: 'Tapeout', icon: '◎', modules: 6, duration: '3h 10m', color: 'var(--meridian-gold)' },
-];
-
-const learningPaths = [
-  {
-    id: 1,
-    title: 'OpenROAD Complete Flow',
-    desc: 'Master the full RTL-to-GDSII flow using the OpenROAD open-source EDA toolchain.',
-    level: 'Intermediate',
-    modules: 24,
-    duration: '12h',
-    students: 1847,
-    progress: 35,
-    recommended: true,
-  },
-  {
-    id: 2,
-    title: 'Timing Closure Mastery',
-    desc: 'Systematic approach to identifying and fixing setup, hold, and clock timing violations.',
-    level: 'Advanced',
-    modules: 18,
-    duration: '9h',
-    students: 923,
-    progress: 0,
-    recommended: false,
-  },
-  {
-    id: 3,
-    title: 'Sky130 Design Fundamentals',
-    desc: 'Complete guide to designing for the SkyWater 130nm process using open-source tools.',
-    level: 'Beginner',
-    modules: 15,
-    duration: '7h 30m',
-    students: 3421,
-    progress: 80,
-    recommended: false,
-  },
-  {
-    id: 4,
-    title: 'Physical Design Troubleshooting',
-    desc: 'Learn to diagnose and fix the most common RTL-to-GDSII implementation failures.',
-    level: 'Intermediate',
-    modules: 20,
-    duration: '10h',
-    students: 2104,
-    progress: 0,
-    recommended: true,
-  },
+  { name: 'All', icon: '📚', modules: 0 },
+  { name: 'RTL Design', icon: '⟨/⟩', modules: 8 },
+  { name: 'Synthesis', icon: '⚙', modules: 12 },
+  { name: 'Floorplanning', icon: '⬚', modules: 7 },
+  { name: 'Placement', icon: '⊞', modules: 10 },
+  { name: 'CTS', icon: '🌳', modules: 9 },
+  { name: 'Routing', icon: '↗', modules: 14 },
+  { name: 'Signoff', icon: '✓', modules: 11 },
 ];
 
 const featuredModules = [
@@ -77,10 +38,24 @@ const levelColors = {
 
 export function LearningHub() {
   const [activeStage, setActiveStage] = useState('All');
+  const [progress, setProgress] = useState<Record<string, string[]>>({});
+
+  useEffect(() => {
+    setProgress(loadLearningProgress());
+  }, []);
+
+  const continueData = useMemo(() => getContinueModuleForPaths(learningPaths, progress), [progress]);
+
+  const activePaths = useMemo(
+    () =>
+      activeStage === 'All'
+        ? learningPaths
+        : learningPaths.filter((path) => path.modules.some((module) => module.stage === activeStage)),
+    [activeStage],
+  );
 
   return (
     <div style={{ background: 'transparent', minHeight: '100vh', fontFamily: 'var(--font-ui)' }}>
-      {/* Header */}
       <div style={{ background: 'var(--abyss-ink)' }}>
         <div className="max-w-6xl mx-auto px-6 lg:px-8 pt-12 pb-10">
           <p className="text-xs font-semibold tracking-widest uppercase mb-3" style={{ color: 'var(--meridian-gold)' }}>Learning Hub</p>
@@ -93,30 +68,34 @@ export function LearningHub() {
         </div>
       </div>
 
-      {/* Progress Banner (if logged in) */}
       <div className="border-b" style={{ background: '#FFFFFF', borderColor: 'var(--stone-ridge)' }}>
         <div className="max-w-6xl mx-auto px-6 lg:px-8 py-5">
-          <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold" style={{ color: 'var(--abyss-ink)' }}>Your Progress</p>
-              <p className="text-xs" style={{ color: '#64748B' }}>Sky130 Design Fundamentals · 80% complete</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--abyss-ink)' }}>Progress Saved Locally</p>
+              <p className="text-xs" style={{ color: '#64748B' }}>Resume where you left off in any learning path.</p>
             </div>
-            <div className="flex items-center gap-4">
-              <div className="w-48 h-1.5 rounded-full" style={{ background: 'var(--secondary)' }}>
-                <div className="h-1.5 rounded-full" style={{ width: '80%', background: 'var(--meridian-gold)' }} />
-              </div>
-              <Link to="#" className="text-sm font-medium" style={{ color: 'var(--meridian-gold)' }}>Continue →</Link>
-            </div>
+            {continueData ? (
+              <Link
+                to={`/learn/${continueData.path.slug}/${continueData.module.slug}`}
+                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium"
+                style={{ background: 'var(--meridian-gold)', color: 'var(--abyss-ink)' }}
+              >
+                Continue: {continueData.path.title}
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <div className="text-sm text-slate-500">No active path yet. Pick one below to get started.</div>
+            )}
           </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-6 lg:px-8 py-10">
-        {/* Pipeline Stage Nav */}
         <div className="mb-10">
           <h2 className="mb-5" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 600, color: 'var(--abyss-ink)' }}>Browse by Stage</h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
-            {stages.map(stage => (
+            {stages.map((stage) => (
               <button
                 key={stage.name}
                 onClick={() => setActiveStage(stage.name)}
@@ -130,27 +109,27 @@ export function LearningHub() {
                 <span className="text-xs font-medium text-center leading-tight" style={{ color: activeStage === stage.name ? '#FFFFFF' : 'var(--abyss-ink)' }}>
                   {stage.name}
                 </span>
-                <span className="text-xs" style={{ color: activeStage === stage.name ? 'rgba(243,242,237,0.5)' : '#94A3B8' }}>
-                  {stage.modules} modules
-                </span>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Learning Paths */}
         <div className="mb-12">
           <div className="flex items-center justify-between mb-6">
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 600, color: 'var(--abyss-ink)' }}>Atlas Suggested Learning Paths</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {learningPaths.map(path => {
+            {activePaths.map((path) => {
               const level = levelColors[path.level as keyof typeof levelColors];
+              const pathProgress = getPathProgress(path, progress);
+              const completedCount = getPathCompletedCount(path, progress);
+              const nextModule = getNextUnfinishedModule(path, progress) ?? path.modules[0];
+
               return (
                 <Link
                   key={path.id}
-                  to="#"
+                  to={`/learn/${path.slug}/${nextModule.slug}`}
                   className="scroll-reveal-card group rounded-xl border p-6 transition-all hover:shadow-md block"
                   style={{ background: '#FFFFFF', border: '1px solid var(--stone-ridge)' }}
                 >
@@ -171,33 +150,26 @@ export function LearningHub() {
                   <p className="text-sm leading-relaxed mb-4" style={{ color: '#64748B' }}>{path.desc}</p>
 
                   <div className="flex items-center gap-4 mb-4 text-xs" style={{ color: '#94A3B8' }}>
-                    <span className="flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" /> {path.modules} modules</span>
-                    <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {path.duration}</span>
+                    <span className="flex items-center gap-1"><BookOpen className="w-3.5 h-3.5" /> {path.modules.length} modules</span>
+                    <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {path.modules.reduce((sum, module) => sum + module.estimatedMinutes, 0)} min total</span>
                     <span className="flex items-center gap-1"><CheckCircle className="w-3.5 h-3.5" /> {path.students.toLocaleString()} enrolled</span>
                   </div>
 
-                  {path.progress > 0 ? (
-                    <div>
-                      <div className="flex justify-between text-xs mb-1.5">
-                        <span style={{ color: '#64748B' }}>Progress</span>
-                        <span style={{ color: 'var(--meridian-gold)' }}>{path.progress}%</span>
-                      </div>
-                      <div className="h-1.5 rounded-full" style={{ background: 'var(--secondary)' }}>
-                        <div className="h-1.5 rounded-full transition-all" style={{ width: `${path.progress}%`, background: 'var(--meridian-gold)' }} />
-                      </div>
+                  <div>
+                    <div className="flex justify-between text-xs mb-1.5">
+                      <span style={{ color: '#64748B' }}>{completedCount} of {path.modules.length} completed</span>
+                      <span style={{ color: 'var(--meridian-gold)' }}>{pathProgress}%</span>
                     </div>
-                  ) : (
-                    <div className="flex items-center gap-1 text-sm font-medium" style={{ color: 'var(--abyss-ink)' }}>
-                      Start path <ArrowRight className="w-3.5 h-3.5" />
+                    <div className="h-1.5 rounded-full" style={{ background: 'var(--secondary)' }}>
+                      <div className="h-1.5 rounded-full transition-all" style={{ width: `${pathProgress}%`, background: 'var(--meridian-gold)' }} />
                     </div>
-                  )}
+                  </div>
                 </Link>
               );
             })}
           </div>
         </div>
 
-        {/* Featured Modules */}
         <div>
           <h2 className="mb-6" style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 600, color: 'var(--abyss-ink)' }}>Featured Modules</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

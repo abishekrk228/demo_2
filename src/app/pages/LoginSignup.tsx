@@ -84,7 +84,7 @@ export function LoginSignup() {
           password,
         });
         if (error) throw error;
-        navigate('/atlas');
+        navigate('/');
       } else if (mode === 'signup') {
         const { error, data } = await supabase.auth.signUp({
           email,
@@ -98,7 +98,7 @@ export function LoginSignup() {
         if (error) throw error;
 
         if (data?.session) {
-          navigate('/atlas');
+          navigate('/');
         } else {
           setSuccess('Registration successful! Please check your email to confirm your account.');
         }
@@ -153,7 +153,7 @@ export function LoginSignup() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo: `${window.location.origin}/atlas`,
+          redirectTo: `${window.location.origin}/`,
         },
       });
       if (error) throw error;
