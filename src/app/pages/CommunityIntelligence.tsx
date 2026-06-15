@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type WheelEvent as ReactWheelEvent } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { 
   TrendingUp, 
@@ -99,6 +99,35 @@ const sanitizedCodeResult = `module module_A (
     end
 endmodule`;
 
+function findWheelScrollableElement(target: EventTarget | null): HTMLElement | null {
+  let element = target instanceof HTMLElement ? target : null;
+
+  while (element) {
+    if (element.dataset.wheelScrollLock === 'true') {
+      return element;
+    }
+    element = element.parentElement;
+  }
+
+  return null;
+}
+
+function canElementScroll(element: HTMLElement, deltaY: number): boolean {
+  if (element.scrollHeight <= element.clientHeight) {
+    return false;
+  }
+
+  if (deltaY < 0) {
+    return element.scrollTop > 0;
+  }
+
+  if (deltaY > 0) {
+    return element.scrollTop + element.clientHeight < element.scrollHeight;
+  }
+
+  return false;
+}
+
 export function CommunityIntelligence() {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
@@ -138,6 +167,51 @@ export function CommunityIntelligence() {
   const [isSanitizing, setIsSanitizing] = useState(false);
   const [sanitizerStep, setSanitizerStep] = useState('');
   const [sanitizedCode, setSanitizedCode] = useState<string | null>(null);
+
+  const handleAskModalWheelCapture = (event: ReactWheelEvent<HTMLDivElement>) => {
+    const scrollableElement = findWheelScrollableElement(event.target);
+
+    if (!scrollableElement || scrollableElement === event.currentTarget) {
+      return;
+    }
+
+    if (canElementScroll(scrollableElement, event.deltaY)) {
+      event.stopPropagation();
+    }
+  };
+
+  const handleAskModalOverlayWheel = (event: ReactWheelEvent<HTMLDivElement>) => {
+    const scrollableElement = findWheelScrollableElement(event.target);
+
+    if (scrollableElement && canElementScroll(scrollableElement, event.deltaY)) {
+      event.stopPropagation();
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleAskModalOverlayTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+
+  useEffect(() => {
+    if (!showAskModal) {
+      return;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [showAskModal]);
 
   useEffect(() => {
     const loadQuestions = async () => {
@@ -811,7 +885,11 @@ export function CommunityIntelligence() {
 
 
       {showAskModal && (
-        <div className="fixed inset-0 bg-[#0F172A]/75 backdrop-blur-xs z-50 flex items-center justify-center p-4 transition-all">
+        <div
+          onWheel={handleAskModalOverlayWheel}
+          onTouchMove={handleAskModalOverlayTouchMove}
+          className="fixed inset-0 overflow-hidden bg-[#0F172A]/75 backdrop-blur-xs z-50 flex items-center justify-center p-4 transition-all"
+        >
           <div className="w-full max-w-4xl bg-white rounded-xl shadow-2xl overflow-hidden border animate-in fade-in zoom-in-95 duration-200 flex flex-col h-[90vh]" style={{ borderColor: 'var(--stone-ridge)' }}>
             
             {/* Modal Header */}
@@ -854,7 +932,11 @@ export function CommunityIntelligence() {
 
             {/* Modal Content */}
             <form onSubmit={handleAskQuestionSubmit} className="flex flex-col flex-1 overflow-hidden">
-              <div className="p-6 space-y-4 overflow-y-auto flex-1 bg-gray-50/20">
+              <div
+                data-wheel-scroll-lock="true"
+                onWheelCapture={handleAskModalWheelCapture}
+                className="p-6 space-y-4 overflow-y-auto overscroll-contain flex-1 bg-gray-50/20"
+              >
                 {/* Private server banner */}
                 {isPrivateTeam && (
                   <div className="rounded-lg p-3 text-xs leading-relaxed border border-amber-200 bg-amber-50/50 flex items-start gap-2 text-amber-800">
@@ -996,10 +1078,11 @@ export function CommunityIntelligence() {
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-semibold text-gray-400 uppercase">Proprietary RTL Input</span>
                       <textarea
+                        data-wheel-scroll-lock="true"
                         rows={5}
                         value={codeToSanitize}
                         onChange={e => setCodeToSanitize(e.target.value)}
-                        className="w-full p-2 border rounded text-[11px] font-mono bg-white outline-none"
+                        className="w-full p-2 border rounded text-[11px] font-mono bg-white outline-none resize-y overflow-y-auto overscroll-contain"
                         style={{ borderColor: 'var(--stone-ridge)' }}
                       />
                       <button
@@ -1026,7 +1109,10 @@ export function CommunityIntelligence() {
                     <div className="flex flex-col gap-1">
                       <span className="text-[10px] font-semibold text-gray-400 uppercase">Sanitized Output (Generic Tokens)</span>
                       
-                      <div className="w-full p-2 border rounded text-[11px] font-mono bg-slate-900 text-slate-100 overflow-y-auto h-[120px] relative">
+                      <div
+                        data-wheel-scroll-lock="true"
+                        className="w-full p-2 border rounded text-[11px] font-mono bg-slate-900 text-slate-100 overflow-y-auto overscroll-contain h-[120px] relative"
+                      >
                         {isSanitizing ? (
                           <div className="absolute inset-0 bg-slate-900/95 flex flex-col items-center justify-center p-3 text-center">
                             <RefreshCw className="w-5 h-5 text-amber-500 animate-spin mb-1" />
@@ -1060,12 +1146,13 @@ export function CommunityIntelligence() {
                   <label className="text-xs font-semibold text-gray-600">Question Body</label>
                   <p className="text-[10px] text-gray-400">Describe the failure behavior (your sanitized code can be appended here)</p>
                   <textarea
+                    data-wheel-scroll-lock="true"
                     required
                     rows={4}
                     placeholder="Describe the context of the bug..."
                     value={newBody}
                     onChange={e => setNewBody(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-md text-xs outline-none focus:ring-1 focus:ring-amber-500 bg-white"
+                    className="w-full px-3 py-2 border rounded-md text-xs outline-none focus:ring-1 focus:ring-amber-500 bg-white resize-y overflow-y-auto overscroll-contain"
                     style={{ borderColor: 'var(--stone-ridge)', fontFamily: 'var(--font-ui)' }}
                   />
                 </div>
